@@ -1,256 +1,223 @@
 <template>
-  <form v-if="!submitted" class="glass-panel">
-    <div class="form-section" data-aos="fade-up">
-      <div class="form-group floating-input">
-        <input
-            type="text"
-            id="name"
-            v-model="formData.name"
-            required
-            placeholder=" "
-        >
-        <label for="name">Ваше имя</label>
-        <span class="input-border"></span>
-      </div>
+  <div v-if="!surveyStarted" class="start-screen glass-panel">
+    <h2>Добро пожаловать в опросник</h2>
+    <button @click="startSurvey" class="submit-btn">
+      Начать опрос
+    </button>
+  </div>
 
-      <div class="form-group floating-input">
-        <input
-            type="email"
-            id="email"
-            v-model="formData.email"
-            required
-            placeholder=" "
-        >
-        <label for="email">Ваш email</label>
-        <span class="input-border"></span>
-      </div>
-    </div>
+  <div v-else-if="questions.length > 0" class="question-container glass-panel">
+    <div v-for="(question, qIndex) in questions" :key="question.id" class="question">
+      <h2>{{ question.text }}</h2>
 
-    <div class="form-actions" data-aos="fade-up" data-aos-delay="250">
-      <button type="submit" class="submit-btn" :disabled="!formData.name || !formData.email || isLoading">
-        <span class="btn-text" @click="handleSubmit">
-          {{ isLoading ? 'Отправка...' : 'Отправить' }}
-        </span>
-        <span class="btn-icon">
-          <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-        </span>
-        <span class="btn-glow"></span>
-      </button>
-    </div>
-  </form>
-
-  <div v-else class="success-message glass-panel">
-    <div class="success-animation">
-<!--      <svg class="checkmark" viewBox="0 0 52 52">-->
-<!--        <circle class="checkmark-circle" cx="26" cy="26" r="25" fill="none"/>-->
-<!--        <path class="checkmark-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>-->
-<!--      </svg>-->
-      <h3>Выберите:</h3>
-      <div class="btn-lst" v-for="el in cache">
+      <div v-if="question.options" class="options">
         <button
-            v-if="cache"
-            class="response-btn"
-            @click="handleResponseButtonClick(el.value.id)"
+            v-for="option in question.options"
+            :key="option.id"
+            @click="selectOption(question.id, option)"
+            :class="{ 'selected': isOptionSelected(question.id, option.id) }"
+            class="option-btn"
         >
-          {{ el.value.text }}
+          {{ option.text }}
         </button>
       </div>
 
-      <button class="response-btn" @click="resetForm">Заполнить еще раз</button>
+      <div v-else class="actions">
+        <button
+            @click="fetchNextQuestion(question.id)"
+            class="submit-btn"
+            :disabled="!hasSelection(question.id)"
+        >
+          {{ question.buttonText || 'Далее' }}
+        </button>
+      </div>
     </div>
+  </div>
+
+  <div v-else class="completion-screen glass-panel">
+    <h2>Опрос завершен!</h2>
+    <p>Спасибо за ваши ответы</p>
+    <div class="summary" v-if="selectedAnswers.length > 0">
+      <h3>Ваши ответы:</h3>
+      <ul>
+        <li v-for="(answer, index) in selectedAnswers" :key="index">
+          Вопрос {{ answer.questionId }}: {{ answer.optionText }}
+        </li>
+      </ul>
+    </div>
+    <button @click="resetSurvey" class="submit-btn">
+      Пройти еще раз
+    </button>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 
-const formData = ref({
-  name: '',
-  email: ''
+const surveyStarted = ref(false)
+const questions = ref([])
+const selectedAnswers = ref([])
+const questionHistory = ref([])
+
+// Загрузка сохраненных ответов при старте
+onMounted(() => {
+  const savedAnswers = localStorage.getItem('surveyAnswers')
+  if (savedAnswers) {
+    selectedAnswers.value = JSON.parse(savedAnswers)
+  }
 })
 
-const dataOnt = ref({
-  id: 0,
-  text: '',
-  storage: {}
-})
-const cache = ref([dataOnt])
-const reps = ref([dataOnt])
+const startSurvey = async () => {
+  surveyStarted.value = true
+  await fetchQuestions()
+}
 
-const submitted = ref(false)
-const isLoading = ref(false)
-const isUpdate = ref(false)
-
-const handleSubmit = async () => {
-  isLoading.value = true
-
+const fetchQuestions = async (id = null) => {
   try {
-    const response = await fetch('http://localhost:8080/')
+    const url = id ? `http://localhost:8080/${id}` : 'http://localhost:8080/'
+    const response = await fetch(url)
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
     const data = await response.json()
+    console.log('Ответ сервера:', data)
 
-    if (Array.isArray(data) && data.length > 0 && data[0].text) {
-      data.forEach((el) => {
-        dataOnt.value.id = el.id
-        dataOnt.value.text = el.text
-        dataOnt.value.storage = el.storage
-        console.log(el)
+    if (Array.isArray(data) && data.length > 0) {
+      questions.value = data.map(item => ({
+        id: item.id,
+        text: item.text,
+        options: item.storage?.options || null,
+        buttonText: item.storage?.buttonText || null
+      }))
 
-        cache.value.push(dataOnt)
-      })
-
-      console.log(cache)
+      questionHistory.value.push(...data.map(q => q.id))
+    } else {
+      questions.value = []
     }
-
-    submitted.value = true
   } catch (error) {
-    console.error('Ошибка при отправке формы:', error)
-  } finally {
-    isLoading.value = false
+    console.error('Ошибка при загрузке вопросов:', error)
+    questions.value = [{
+      id: 'error',
+      text: 'Произошла ошибка при загрузке вопросов',
+      options: null,
+      buttonText: 'Попробовать снова'
+    }]
   }
 }
 
-const handleResponseButtonClick = async (url) => {
-  isUpdate.value = false
-  try {
-    const response = await fetch('http://localhost:8080/' + url)
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
+const selectOption = (questionId, option) => {
+  // Удаляем предыдущий ответ на этот вопрос если был
+  selectedAnswers.value = selectedAnswers.value.filter(
+      a => a.questionId !== questionId
+  )
 
-    const data = await response.json()
-    if (Array.isArray(data) && data.length > 0 && data[0].text) {
-      data.forEach((el) => {
-        dataOnt.value.id = el.id
-        dataOnt.value.text = el.text
-        dataOnt.value.storage = el.storage
+  // Добавляем новый ответ
+  selectedAnswers.value.push({
+    questionId,
+    questionText: questions.value.find(q => q.id === questionId)?.text,
+    optionId: option.id,
+    optionText: option.text,
+    timestamp: new Date().toISOString()
+  })
 
-
-        cache.value.push(dataOnt)
-      })
-
-      console.log(cache)
-    }
-  } catch (error) {
-    console.error('Ошибка при отправке формы:', error)
-  } finally {
-    isUpdate.value = true
-  }
+  // Сохраняем в localStorage
+  localStorage.setItem('surveyAnswers', JSON.stringify(selectedAnswers.value))
 }
 
-const resetForm = () => {
-  formData.value = { name: '', email: '' }
-  submitted.value = false
-  cache.value = []
+const isOptionSelected = (questionId, optionId) => {
+  return selectedAnswers.value.some(
+      a => a.questionId === questionId && a.optionId === optionId
+  )
+}
+
+const hasSelection = (questionId) => {
+  return questions.value.find(q => q.id === questionId)?.options
+      ? selectedAnswers.value.some(a => a.questionId === questionId)
+      : true
+}
+
+const fetchNextQuestion = async (questionId) => {
+  await fetchQuestions(questionId)
+}
+
+const resetSurvey = () => {
+  surveyStarted.value = false
+  questions.value = []
+  selectedAnswers.value = []
+  questionHistory.value = []
+  localStorage.removeItem('surveyAnswers')
 }
 </script>
 
 <style scoped>
-.form-section {
+.start-screen,
+.question-container,
+.completion-screen {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 40px;
+  text-align: center;
+}
+
+h2 {
   margin-bottom: 30px;
-  position: relative;
+  color: var(--primary);
 }
 
-.form-group {
-  margin-bottom: 25px;
-  position: relative;
+.question {
+  margin-bottom: 40px;
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--glass-border);
 }
 
-.floating-input {
-  position: relative;
+.question:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
 }
 
-.floating-input input,
-.floating-input textarea {
-  width: 100%;
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 30px;
+}
+
+.option-btn {
   padding: 15px;
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: 10px;
-  font-size: 1rem;
   color: var(--text);
+  cursor: pointer;
   transition: all 0.3s ease;
-}
-
-.floating-input textarea {
-  min-height: 120px;
-  resize: vertical;
-}
-
-.floating-input label {
-  position: absolute;
-  top: 15px;
-  left: 15px;
-  color: var(--text);
-  opacity: 0.7;
   font-size: 1rem;
-  pointer-events: none;
-  transition: all 0.3s ease;
-  transform-origin: left center;
 }
 
-.floating-input input:focus,
-.floating-input textarea:focus,
-.floating-input input:not(:placeholder-shown),
-.floating-input textarea:not(:placeholder-shown) {
-  border-color: var(--primary);
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(110, 69, 226, 0.2);
+.option-btn:hover {
+  background: rgba(110, 69, 226, 0.1);
+  transform: translateY(-2px);
 }
 
-.floating-input input:focus ~ label,
-.floating-input textarea:focus ~ label,
-.floating-input input:not(:placeholder-shown) ~ label,
-.floating-input textarea:not(:placeholder-shown) ~ label {
-  transform: translateY(-25px) scale(0.85);
-  opacity: 1;
-  color: var(--primary);
-  background: var(--bg);
-  padding: 0 5px;
-  border-radius: 5px;
-}
-
-.input-border {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 0;
-  height: 2px;
-  background: linear-gradient(to right, var(--primary), var(--secondary));
-  transition: width 0.4s ease;
-}
-
-.floating-input input:focus ~ .input-border,
-.floating-input textarea:focus ~ .input-border {
-  width: 100%;
-}
-
-.form-actions {
-  margin-top: 40px;
-  display: flex;
-  justify-content: center;
+.option-btn.selected {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 15px rgba(110, 69, 226, 0.3);
 }
 
 .submit-btn {
-  position: relative;
+  margin-top: 30px;
+  padding: 15px 40px;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: white;
   border: none;
-  padding: 15px 40px;
-  font-size: 1rem;
-  font-weight: 600;
   border-radius: 50px;
   cursor: pointer;
   transition: all 0.3s ease;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  box-shadow: 0 5px 15px rgba(110, 69, 226, 0.3);
-  z-index: 1;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .submit-btn:hover {
@@ -258,111 +225,34 @@ const resetForm = () => {
   box-shadow: 0 8px 25px rgba(110, 69, 226, 0.4);
 }
 
-.submit-btn:active {
-  transform: translateY(0);
-}
-
 .submit-btn:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
 }
 
-.btn-text {
-  position: relative;
-  z-index: 1;
+.summary {
+  margin: 30px 0;
+  text-align: left;
+  background: var(--glass);
+  padding: 20px;
+  border-radius: 10px;
 }
 
-.btn-icon {
-  margin-left: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  z-index: 1;
+.summary h3 {
+  color: var(--accent);
+  margin-bottom: 15px;
 }
 
-.btn-icon svg {
-  width: 18px;
-  height: 18px;
-  fill: white;
+.summary ul {
+  list-style-type: none;
+  padding: 0;
 }
 
-.btn-glow {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.submit-btn:hover .btn-glow {
-  opacity: 1;
-}
-
-.success-message {
-  text-align: center;
-  padding: 40px;
-}
-
-.success-animation {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.checkmark {
-  width: 100px;
-  height: 100px;
-  margin-bottom: 20px;
-}
-
-.checkmark-circle {
-  stroke: var(--success);
-  stroke-width: 2;
-  stroke-dasharray: 166;
-  stroke-dashoffset: 166;
-  fill: none;
-  animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
-}
-
-.checkmark-check {
-  stroke: var(--success);
-  stroke-width: 2;
-  stroke-dasharray: 48;
-  stroke-dashoffset: 48;
-  animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
-}
-
-@keyframes stroke {
-  100% {
-    stroke-dashoffset: 0;
-  }
-}
-
-.response-btn {
-  margin-top: 20px;
-  padding: 10px 25px;
-  background: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 50px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: 600;
-  box-shadow: 0 4px 15px rgba(110, 69, 226, 0.3);
-}
-
-.response-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(110, 69, 226, 0.4);
-}
-
-.response-btn:active {
-  transform: translateY(0);
+.summary li {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--glass-border);
 }
 </style>
