@@ -1,5 +1,5 @@
 <template>
-  <form v-if="!submitted" @submit.prevent="handleSubmit" class="glass-panel">
+  <form v-if="!submitted" class="glass-panel">
     <div class="form-section" data-aos="fade-up">
       <div class="form-group floating-input">
         <input
@@ -28,7 +28,7 @@
 
     <div class="form-actions" data-aos="fade-up" data-aos-delay="250">
       <button type="submit" class="submit-btn" :disabled="!formData.name || !formData.email || isLoading">
-        <span class="btn-text">
+        <span class="btn-text" @click="handleSubmit">
           {{ isLoading ? 'Отправка...' : 'Отправить' }}
         </span>
         <span class="btn-icon">
@@ -46,13 +46,13 @@
 <!--        <path class="checkmark-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>-->
 <!--      </svg>-->
       <h3>Выберите:</h3>
-      <div class="btn-lst">
+      <div class="btn-lst" v-for="el in cache">
         <button
             v-if="cache"
             class="response-btn"
-            @click="handleResponseButtonClick(cache[0].value.id)"
+            @click="handleResponseButtonClick(el.value.id)"
         >
-          {{ cache[0].value.text }}
+          {{ el.value.text }}
         </button>
       </div>
 
@@ -68,13 +68,14 @@ const formData = ref({
   name: '',
   email: ''
 })
+
 const dataOnt = ref({
   id: 0,
   text: '',
   storage: {}
 })
-
 const cache = ref([dataOnt])
+const reps = ref([dataOnt])
 
 const submitted = ref(false)
 const isLoading = ref(false)
@@ -84,7 +85,6 @@ const handleSubmit = async () => {
   isLoading.value = true
 
   try {
-    // Отправляем запрос на сервер
     const response = await fetch('http://localhost:8080/')
 
     if (!response.ok) {
@@ -92,16 +92,18 @@ const handleSubmit = async () => {
     }
 
     const data = await response.json()
-    console.log('Ответ сервера:', data)
 
-    // Предполагаем, что ответ имеет структуру [{"id":4,"text":"Источник","storage":{}}]
-    // Берем текст из первого элемента массива
     if (Array.isArray(data) && data.length > 0 && data[0].text) {
-      dataOnt.value.id = data[0].id
-      dataOnt.value.text = data[0].text
-      dataOnt.value.storage = data[0].storage
+      data.forEach((el) => {
+        dataOnt.value.id = el.id
+        dataOnt.value.text = el.text
+        dataOnt.value.storage = el.storage
+        console.log(el)
 
-      cache.value.push(dataOnt)
+        cache.value.push(dataOnt)
+      })
+
+      console.log(cache)
     }
 
     submitted.value = true
@@ -115,17 +117,23 @@ const handleSubmit = async () => {
 const handleResponseButtonClick = async (url) => {
   isUpdate.value = false
   try {
-    // Отправляем запрос на сервер
     const response = await fetch('http://localhost:8080/' + url)
-    console.log(cache)
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
     const data = await response.json()
     if (Array.isArray(data) && data.length > 0 && data[0].text) {
-      cache.value.id = data[0].id
-      cache.value.text = data[0].text
+      data.forEach((el) => {
+        dataOnt.value.id = el.id
+        dataOnt.value.text = el.text
+        dataOnt.value.storage = el.storage
+
+
+        cache.value.push(dataOnt)
+      })
+
+      console.log(cache)
     }
   } catch (error) {
     console.error('Ошибка при отправке формы:', error)
@@ -137,7 +145,7 @@ const handleResponseButtonClick = async (url) => {
 const resetForm = () => {
   formData.value = { name: '', email: '' }
   submitted.value = false
-  cache.value = { id: '', text: '' }
+  cache.value = []
 }
 </script>
 
