@@ -4,7 +4,7 @@
     <div class="survey-header">
       <h1 class="survey-title">
         <span class="title-gradient">ОПРОСНИК</span>
-        <span class="title-year">2025</span>
+        <span class="title-year">{{ new Date().getFullYear() }}</span>
       </h1>
       <p class="survey-description">Помогите нам стать лучше — ответьте на несколько вопросов</p>
       <ThemeToggle />

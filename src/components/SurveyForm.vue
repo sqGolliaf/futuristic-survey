@@ -1,70 +1,116 @@
 <template>
-  <div v-if="!surveyStarted" class="start-screen glass-panel">
-    <h2>Добро пожаловать в опросник</h2>
-    <button @click="startSurvey" class="submit-btn">
+  <div v-if="!surveyStarted" class="user-data glass-panel">
+    <h2>Введите ваши данные</h2>
+    <div class="form-group">
+      <label>Имя:</label>
+      <input v-model="userData.firstName" type="text" placeholder="Ваше имя">
+    </div>
+    <div class="form-group">
+      <label>Фамилия:</label>
+      <input v-model="userData.lastName" type="text" placeholder="Ваша фамилия">
+    </div>
+    <div class="form-group">
+      <label>Email:</label>
+      <input v-model="userData.email" type="email" placeholder="Ваш email">
+    </div>
+    <button @click="startSurvey" class="submit-btn" >
       Начать опрос
     </button>
   </div>
 
-  <div v-else-if="questions.length > 0" class="question-container glass-panel">
-    <div v-for="(question, qIndex) in questions" :key="question.id" class="question">
-      <h2>{{ question.text }}</h2>
-
-      <div v-if="question.options" class="options">
+  <div v-else-if="currentStep.value === 2" class="question-container glass-panel">
+    <h2>Выберите:</h2>
+    <div v-for="question in questions" class="question">
         <button
-            v-for="option in question.options"
-            :key="option.id"
-            @click="selectOption(question.id, option)"
-            :class="{ 'selected': isOptionSelected(question.id, option.id) }"
-            class="option-btn"
-        >
-          {{ option.text }}
-        </button>
-      </div>
-
-      <div v-else class="actions">
-        <button
-            @click="fetchNextQuestion(question.id)"
+            :key="question.id"
+            @click="selectOption(currentQuestionIndex, question)"
             class="submit-btn"
-            :disabled="!hasSelection(question.id)"
         >
-          {{ question.buttonText || 'Далее' }}
+          {{ question.text }}
         </button>
-      </div>
     </div>
+    <button v-if="currentQuestionIndex > 0" @click="prevQuestion()" class="nav-btn">
+      ← Назад
+    </button>
   </div>
 
   <div v-else class="completion-screen glass-panel">
-    <h2>Опрос завершен!</h2>
-    <p>Спасибо за ваши ответы</p>
+    <p>Спасибо за ваши ответы, {{ userData.firstName }}</p>
     <div class="summary" v-if="selectedAnswers.length > 0">
       <h3>Ваши ответы:</h3>
       <ul>
         <li v-for="(answer, index) in selectedAnswers" :key="index">
-          Вопрос {{ answer.questionId }}: {{ answer.optionText }}
+          Выбор: {{ answer.questionId }}: {{ answer.optionText }}
         </li>
       </ul>
     </div>
-    <button @click="resetSurvey" class="submit-btn">
+    <button @click="completeSurvey()" class="submit-btn">
       Пройти еще раз
     </button>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+
+import { ref, onMounted, computed } from 'vue'
 
 const surveyStarted = ref(false)
+const currentStep = ref(1)
+const currentQuestionIndex = ref(0)
+
 const questions = ref([])
 const selectedAnswers = ref([])
 const questionHistory = ref([])
+
+const userData = ref({
+  firstName: '',
+  lastName: '',
+  email: ''
+})
+
+
+const isUserDataValid = computed(() => {
+  return userData.value.firstName.trim() !== '' &&
+      userData.value.lastName.trim() !== '' &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userData.value.email)
+})
+
+// Вычисляемые свойства
+const currentQuestion = computed(() => {
+  return questions.value[currentQuestionIndex.value] || {}
+})
+
+const prevQuestion = () => {
+  if (currentQuestionIndex.value > 0) {
+    currentQuestionIndex.value--
+  }
+}
+
+const nextQuestion = () => {
+  if (currentQuestionIndex.value < questions.value.length - 1) {
+    currentQuestionIndex.value++
+  }
+}
 
 // Загрузка сохраненных ответов при старте
 onMounted(() => {
   const savedAnswers = localStorage.getItem('surveyAnswers')
   if (savedAnswers) {
-    selectedAnswers.value = JSON.parse(savedAnswers)
+    const data = JSON.parse(savedAnswers)
+    userData.value = data.userData || userData.value
+    selectedAnswers.value = data.answers || []
+
+    if (data.questions && data.questions.length > 0) {
+      questions.value = data.questions
+      currentStep.value = 2
+    }
   }
+})
+
+const allQuestionsAnswered = computed(() => {
+  return questions.value.every(q =>
+      selectedAnswers.value.some(a => a.questionId === q.id)
+  )
 })
 
 const startSurvey = async () => {
@@ -74,12 +120,10 @@ const startSurvey = async () => {
 
 const fetchQuestions = async (id = null) => {
   try {
-    const url = id ? `http://localhost:8080/${id}` : 'http://localhost:8080/'
+    const url = id ? `http://localhost:8080/to/${id}` : 'http://localhost:8080/'
     const response = await fetch(url)
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
     const data = await response.json()
     console.log('Ответ сервера:', data)
@@ -88,58 +132,82 @@ const fetchQuestions = async (id = null) => {
       questions.value = data.map(item => ({
         id: item.id,
         text: item.text,
-        options: item.storage?.options || null,
-        buttonText: item.storage?.buttonText || null
+        options: item.storage?.options || null
       }))
-
-      questionHistory.value.push(...data.map(q => q.id))
     } else {
-      questions.value = []
+      questions.value.length = 0
     }
   } catch (error) {
     console.error('Ошибка при загрузке вопросов:', error)
-    questions.value = [{
-      id: 'error',
-      text: 'Произошла ошибка при загрузке вопросов',
-      options: null,
-      buttonText: 'Попробовать снова'
-    }]
+    alert('Не удалось загрузить вопрос')
+  } finally {
+    nextQuestion()
+    saveToCache()
   }
 }
 
+const hasSelection = (questionId) => {
+  return selectedAnswers.value.some(a => a.questionId === questionId)
+
+}
+
 const selectOption = (questionId, option) => {
-  // Удаляем предыдущий ответ на этот вопрос если был
-  selectedAnswers.value = selectedAnswers.value.filter(
-      a => a.questionId !== questionId
-  )
+  // Удаляем предыдущий ответ если был
+  selectedAnswers.value.forEach(item => {
+    console.log(item)
+  })
+  console.log(questionId)
+  selectedAnswers.value = selectedAnswers.value.filter(a => a.questionId !== questionId)
+  selectedAnswers.value.forEach(item => {
+    console.log(item)
+  })
 
   // Добавляем новый ответ
   selectedAnswers.value.push({
     questionId,
-    questionText: questions.value.find(q => q.id === questionId)?.text,
     optionId: option.id,
     optionText: option.text,
     timestamp: new Date().toISOString()
   })
 
-  // Сохраняем в localStorage
-  localStorage.setItem('surveyAnswers', JSON.stringify(selectedAnswers.value))
-}
-
-const isOptionSelected = (questionId, optionId) => {
-  return selectedAnswers.value.some(
-      a => a.questionId === questionId && a.optionId === optionId
-  )
-}
-
-const hasSelection = (questionId) => {
-  return questions.value.find(q => q.id === questionId)?.options
-      ? selectedAnswers.value.some(a => a.questionId === questionId)
-      : true
+  fetchNextQuestion(option.id)
 }
 
 const fetchNextQuestion = async (questionId) => {
   await fetchQuestions(questionId)
+}
+
+const completeSurvey = async () => {
+  const payload = {
+    user: userData.value,
+    answers: selectedAnswers.value.map(answer => ({
+      questionId: answer.questionId,
+      optionId: answer.optionId,
+      timestamp: answer.timestamp
+    })),
+    completedAt: new Date().toISOString()
+  }
+
+  try {
+    const response = await fetch('http://localhost:8080/saveAnswer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+
+    if (!response.ok) throw new Error('Ошибка сохранения ответов')
+
+    const result = await response.json()
+    console.log('Ответ сервера:', result)
+
+  } catch (error) {
+    console.error('Ошибка:', error)
+    alert('Не удалось отправить ответы. Пожалуйста, попробуйте позже.')
+  } finally {
+    resetSurvey()
+  }
 }
 
 const resetSurvey = () => {
@@ -147,82 +215,151 @@ const resetSurvey = () => {
   questions.value = []
   selectedAnswers.value = []
   questionHistory.value = []
+  currentQuestionIndex.value = 0
   localStorage.removeItem('surveyAnswers')
 }
+
+const saveToCache = () => {
+  localStorage.setItem('surveyData', JSON.stringify({
+    userData: userData.value,
+    questions: questions.value,
+    answers: selectedAnswers.value
+  }))
+}
+
 </script>
 
 <style scoped>
-.start-screen,
-.question-container,
-.completion-screen {
+.survey-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.user-data {
   max-width: 600px;
   margin: 0 auto;
   padding: 40px;
+  width: 100%;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--glass);
+  color: var(--text);
+}
+
+.questions-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+}
+
+.question-main {
+  width: 100%;
+  max-width: 800px;
+  padding: 40px;
+  margin: 0 auto;
+}
+
+.question-main h3 {
+  font-size: 1.5rem;
+  margin-bottom: 30px;
+  color: var(--primary);
   text-align: center;
 }
 
-h2 {
-  margin-bottom: 30px;
-  color: var(--primary);
-}
-
-.question {
-  margin-bottom: 40px;
-  padding-bottom: 30px;
-  border-bottom: 1px solid var(--glass-border);
-}
-
-.question:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-
-.options {
-  display: flex;
-  flex-direction: column;
+.options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 15px;
-  margin-top: 30px;
+  margin: 30px 0;
 }
 
 .option-btn {
   padding: 15px;
-  background: var(--glass);
   border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  color: var(--text);
+  border-radius: 8px;
+  background: var(--glass);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   font-size: 1rem;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .option-btn:hover {
   background: rgba(110, 69, 226, 0.1);
-  transform: translateY(-2px);
 }
 
 .option-btn.selected {
   background: var(--primary);
   color: white;
+  border-color: var(--primary);
+  transform: scale(1.02);
   box-shadow: 0 4px 15px rgba(110, 69, 226, 0.3);
 }
 
-.submit-btn {
+.question-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 30px;
-  padding: 15px 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 8px 15px;
+  font-size: 1rem;
+}
+
+.nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submit-btn {
+  margin-top: 20px;
+  padding: 12px 30px;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: white;
   border: none;
   border-radius: 50px;
   cursor: pointer;
+  font-weight: 600;
   transition: all 0.3s ease;
   font-size: 1rem;
-  font-weight: 600;
 }
 
 .submit-btn:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(110, 69, 226, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(110, 69, 226, 0.3);
 }
 
 .submit-btn:disabled {
@@ -232,17 +369,40 @@ h2 {
   box-shadow: none;
 }
 
+.nav-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 8px 15px;
+  font-size: 1rem;
+}
+
+.nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.completion-screen {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px;
+  text-align: center;
+  width: 100%;
+}
+
 .summary {
   margin: 30px 0;
   text-align: left;
   background: var(--glass);
-  padding: 20px;
+  padding: 25px;
   border-radius: 10px;
 }
 
 .summary h3 {
   color: var(--accent);
-  margin-bottom: 15px;
+  margin-bottom: 20px;
+  text-align: center;
 }
 
 .summary ul {
@@ -251,8 +411,23 @@ h2 {
 }
 
 .summary li {
-  margin-bottom: 8px;
-  padding-bottom: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
   border-bottom: 1px dashed var(--glass-border);
+}
+
+@media (max-width: 768px) {
+  .options-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .question-main {
+    padding: 25px;
+  }
+
+  .user-data,
+  .completion-screen {
+    padding: 30px;
+  }
 }
 </style>
