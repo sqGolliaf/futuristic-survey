@@ -1,5 +1,5 @@
 <template>
-  <div v-if="!surveyStarted" class="user-data glass-panel">
+  <div v-if="currentStep === 1" class="user-data glass-panel">
     <h2>Введите ваши данные</h2>
     <div class="form-group">
       <label>Имя:</label>
@@ -13,12 +13,12 @@
       <label>Email:</label>
       <input v-model="userData.email" type="email" placeholder="Ваш email">
     </div>
-    <button @click="startSurvey" class="submit-btn" >
+    <button @click="fetchQuestionsMain" class="submit-btn" >
       Начать опрос
     </button>
   </div>
 
-  <div v-else-if="currentStep.value === 2" class="question-container glass-panel">
+  <div v-else-if="currentStep === 2" class="question-container glass-panel">
     <h2>Выберите:</h2>
     <div v-for="question in questions" class="question">
         <button
@@ -40,7 +40,7 @@
       <h3>Ваши ответы:</h3>
       <ul>
         <li v-for="(answer, index) in selectedAnswers" :key="index">
-          Выбор: {{ answer.questionId }}: {{ answer.optionText }}
+          Выбор: {{ answer.currentQuestionIndex }}: {{ answer.text }}
         </li>
       </ul>
     </div>
@@ -54,13 +54,12 @@
 
 import { ref, onMounted, computed } from 'vue'
 
-const surveyStarted = ref(false)
 const currentStep = ref(1)
 const currentQuestionIndex = ref(0)
 
 const questions = ref([])
+const questionsHistory = ref([])
 const selectedAnswers = ref([])
-const questionHistory = ref([])
 
 const userData = ref({
   firstName: '',
@@ -75,7 +74,6 @@ const isUserDataValid = computed(() => {
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userData.value.email)
 })
 
-// Вычисляемые свойства
 const currentQuestion = computed(() => {
   return questions.value[currentQuestionIndex.value] || {}
 })
@@ -87,12 +85,9 @@ const prevQuestion = () => {
 }
 
 const nextQuestion = () => {
-  if (currentQuestionIndex.value < questions.value.length - 1) {
     currentQuestionIndex.value++
-  }
 }
 
-// Загрузка сохраненных ответов при старте
 onMounted(() => {
   const savedAnswers = localStorage.getItem('surveyAnswers')
   if (savedAnswers) {
@@ -113,14 +108,9 @@ const allQuestionsAnswered = computed(() => {
   )
 })
 
-const startSurvey = async () => {
-  surveyStarted.value = true
-  await fetchQuestions()
-}
-
-const fetchQuestions = async (id = null) => {
+const fetchQuestionsMain = async () => {
   try {
-    const url = id ? `http://localhost:8080/to/${id}` : 'http://localhost:8080/'
+    const url = 'http://localhost:8080/'
     const response = await fetch(url)
 
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
@@ -134,47 +124,67 @@ const fetchQuestions = async (id = null) => {
         text: item.text,
         options: item.storage?.options || null
       }))
+
+      currentStep.value = 2
+      saveToCache()
     } else {
-      questions.value.length = 0
+      currentStep.value = 3
     }
   } catch (error) {
     console.error('Ошибка при загрузке вопросов:', error)
     alert('Не удалось загрузить вопрос')
-  } finally {
-    nextQuestion()
-    saveToCache()
   }
 }
 
-const hasSelection = (questionId) => {
-  return selectedAnswers.value.some(a => a.questionId === questionId)
+const fetchQuestionsTo = async (id) => {
+  try {
+    const url = `http://localhost:8080/to/${id}`
+    const response = await fetch(url)
 
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+    const data = await response.json()
+    console.log('Ответ сервера:', data)
+
+    if (Array.isArray(data) && data.length > 0) {
+      questionsHistory.value.push(
+          questions.value.map(item => ({
+            id: item.id,
+            text: item.text,
+            options: item.storage?.options || null
+          }))
+      )
+
+      questions.value = data.map(item => ({
+        id: item.id,
+        text: item.text,
+        options: item.storage?.options || null
+      }))
+
+      currentStep.value = 2
+      saveToCache()
+      nextQuestion()
+    } else {
+      currentStep.value = 3
+    }
+  } catch (error) {
+    console.error('Ошибка при загрузке вопросов:', error)
+    alert('Не удалось загрузить вопрос')
+  }
 }
 
-const selectOption = (questionId, option) => {
-  // Удаляем предыдущий ответ если был
-  selectedAnswers.value.forEach(item => {
-    console.log(item)
-  })
-  console.log(questionId)
-  selectedAnswers.value = selectedAnswers.value.filter(a => a.questionId !== questionId)
-  selectedAnswers.value.forEach(item => {
-    console.log(item)
-  })
+const selectOption = (currentQuestionIndex, question) => {
+  const newAnswers = selectedAnswers.value.filter(a => a.questionId !== questionId)
 
-  // Добавляем новый ответ
-  selectedAnswers.value.push({
-    questionId,
-    optionId: option.id,
-    optionText: option.text,
+  newAnswers.push({
+    currentQuestionIndex,
+    id: question.id,
+    text: question.text,
     timestamp: new Date().toISOString()
   })
 
-  fetchNextQuestion(option.id)
-}
-
-const fetchNextQuestion = async (questionId) => {
-  await fetchQuestions(questionId)
+  selectedAnswers.value = newAnswers
+  fetchQuestionsTo(question.id)
 }
 
 const completeSurvey = async () => {
@@ -182,7 +192,7 @@ const completeSurvey = async () => {
     user: userData.value,
     answers: selectedAnswers.value.map(answer => ({
       questionId: answer.questionId,
-      optionId: answer.optionId,
+      optionId: answer.id,
       timestamp: answer.timestamp
     })),
     completedAt: new Date().toISOString()
@@ -207,14 +217,15 @@ const completeSurvey = async () => {
     alert('Не удалось отправить ответы. Пожалуйста, попробуйте позже.')
   } finally {
     resetSurvey()
+    currentStep.value = 1
   }
 }
 
 const resetSurvey = () => {
-  surveyStarted.value = false
+  currentStep.value = 1
+  userData.value = { firstName: '', lastName: '', email: '' }
   questions.value = []
   selectedAnswers.value = []
-  questionHistory.value = []
   currentQuestionIndex.value = 0
   localStorage.removeItem('surveyAnswers')
 }
@@ -230,16 +241,6 @@ const saveToCache = () => {
 </script>
 
 <style scoped>
-.survey-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-  min-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
 .user-data {
   max-width: 600px;
   margin: 0 auto;
@@ -266,68 +267,11 @@ const saveToCache = () => {
   color: var(--text);
 }
 
-.questions-wrapper {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-grow: 1;
-}
-
-.question-main {
-  width: 100%;
-  max-width: 800px;
-  padding: 40px;
-  margin: 0 auto;
-}
-
 .question-main h3 {
   font-size: 1.5rem;
   margin-bottom: 30px;
   color: var(--primary);
   text-align: center;
-}
-
-.options-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 15px;
-  margin: 30px 0;
-}
-
-.option-btn {
-  padding: 15px;
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  background: var(--glass);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1rem;
-  min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.option-btn:hover {
-  background: rgba(110, 69, 226, 0.1);
-}
-
-.option-btn.selected {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
-  transform: scale(1.02);
-  box-shadow: 0 4px 15px rgba(110, 69, 226, 0.3);
-}
-
-.question-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 30px;
-  padding-top: 20px;
-  border-top: 1px solid var(--glass-border);
 }
 
 .nav-btn {
