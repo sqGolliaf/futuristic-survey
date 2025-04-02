@@ -174,7 +174,7 @@ const fetchQuestionsTo = async (id) => {
 }
 
 const selectOption = (currentQuestionIndex, question) => {
-  const newAnswers = selectedAnswers.value.filter(a => a.questionId !== questionId)
+  const newAnswers = selectedAnswers.value.filter(a => a.questionId !== currentQuestionIndex)
 
   newAnswers.push({
     currentQuestionIndex,
