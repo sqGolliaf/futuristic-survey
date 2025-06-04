@@ -14,7 +14,13 @@
       <input v-model="userData.email" type="email" placeholder="Ваш email">
     </div>
     <button @click="fetchQuestionsMain" class="submit-btn" >
-      Начать опрос
+      Авторизация
+    </button>
+    <button @click="fetchQuestionsMain" class="submit-btn" >
+      Регистрация
+    </button>
+    <button @click="fetchQuestionsMain" class="submit-btn" >
+      Старт
     </button>
   </div>
 
@@ -58,7 +64,7 @@ const currentStep = ref(1)
 const currentQuestionIndex = ref(0)
 
 const questions = ref([])
-const questionsHistory = ref([])
+const questionsHistory = ref(new Map())
 const selectedAnswers = ref([])
 
 const userData = ref({
@@ -74,13 +80,11 @@ const isUserDataValid = computed(() => {
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userData.value.email)
 })
 
-const currentQuestion = computed(() => {
-  return questions.value[currentQuestionIndex.value] || {}
-})
-
 const prevQuestion = () => {
   if (currentQuestionIndex.value > 0) {
     currentQuestionIndex.value--
+    selectedAnswers.value.pop()
+    questions.value = questionsHistory.value.get(currentQuestionIndex)
   }
 }
 
@@ -147,14 +151,10 @@ const fetchQuestionsTo = async (id) => {
     console.log('Ответ сервера:', data)
 
     if (Array.isArray(data) && data.length > 0) {
-      questionsHistory.value.push(
-          questions.value.map(item => ({
-            id: item.id,
-            text: item.text,
-            options: item.storage?.options || null
-          }))
-      )
-
+      questionsHistory.value.set(currentQuestionIndex, questions.value)
+      questionsHistory.value.forEach((key, value) => {
+        console.log('key:', key, 'value:', value)
+      })
       questions.value = data.map(item => ({
         id: item.id,
         text: item.text,
@@ -199,18 +199,19 @@ const completeSurvey = async () => {
   }
 
   try {
-    const response = await fetch('http://localhost:8080/saveAnswer', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    })
-
-    if (!response.ok) throw new Error('Ошибка сохранения ответов')
-
-    const result = await response.json()
-    console.log('Ответ сервера:', result)
+    // const response = await fetch('http://localhost:8080/saveAnswer', {
+    //   method: 'POST',
+    //   headers: {
+    //     'Content-Type': 'application/json'
+    //   },
+    //   body: JSON.stringify(payload)
+    // })
+    //
+    // if (!response.ok) throw new Error('Ошибка сохранения ответов')
+    //
+    // const result = await response.json()
+    // console.log('Ответ сервера:', result)
+    console.log('Будет отправлена')
 
   } catch (error) {
     console.error('Ошибка:', error)

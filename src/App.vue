@@ -1,80 +1,61 @@
 <template>
   <ParticlesBackground />
-  <div class="survey-container">
-    <div class="survey-header">
-      <h1 class="survey-title">
-        <span class="title-gradient">ОПРОСНИК</span>
-        <span class="title-year">{{ new Date().getFullYear() }}</span>
-      </h1>
-      <p class="survey-description">Помогите нам стать лучше — ответьте на несколько вопросов</p>
-      <ThemeToggle />
-    </div>
-
-    <SurveyForm />
+  <ThemeToggle />
+  <div id="app">
+    <nav>
+      <router-link to="/">Главная</router-link> |
+      <router-link to="/auth">Авторизация</router-link>
+      <router-link to="/reg">Регистрация</router-link>
+    </nav>
+    
+    <router-view v-slot="{ Component }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
   </div>
 </template>
 
 <script setup>
-import ParticlesBackground from './components/ParticlesBackground.vue'
-import ThemeToggle from './components/ThemeToggle.vue'
-import SurveyForm from './components/SurveyForm.vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import ParticlesBackground from './views/ParticlesBackground.vue';
+import ThemeToggle from './views/ThemeToggle.vue';
+
+const route = useRoute()
 </script>
 
-<style scoped>
-.survey-container {
-  width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
-  position: relative;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-}
-
-.survey-header {
+<style>
+#app {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-align: center;
-  margin-bottom: 40px;
-  position: relative;
-  width: 100%;
+  color: #2c3e50;
 }
 
-.survey-title {
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 800;
-  font-size: clamp(2.5rem, 5vw, 4rem);
-  margin-bottom: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+nav {
+  padding: 30px;
 }
 
-.title-gradient {
-  background: linear-gradient(90deg, var(--primary), var(--accent));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  display: inline-block;
+nav a {
+  font-weight: bold;
+  color: #2c3e50;
+  margin: 0 10px;
+  text-decoration: none;
 }
 
-.title-year {
-  font-size: 0.6em;
-  background: var(--glass);
-  backdrop-filter: blur(10px);
-  padding: 5px 15px;
-  border-radius: 50px;
-  border: 1px solid var(--glass-border);
-  margin-top: 10px;
-  font-weight: 600;
-  color: var(--accent);
+nav a.router-link-exact-active {
+  color: #42b983;
 }
 
-.survey-description {
-  font-size: 1.1rem;
-  opacity: 0.8;
-  max-width: 600px;
-  margin: 0 auto 20px;
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
