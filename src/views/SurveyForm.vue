@@ -39,21 +39,6 @@
       ← Назад
     </button>
   </div>
-
-  <div v-else class="completion-screen glass-panel">
-    <p>Спасибо за ваши ответы, {{ userData.firstName }}</p>
-    <div class="summary" v-if="selectedAnswers.length > 0">
-      <h3>Ваши ответы:</h3>
-      <ul>
-        <li v-for="(answer, index) in selectedAnswers" :key="index">
-          Выбор: {{ answer.currentQuestionIndex }}: {{ answer.text }}
-        </li>
-      </ul>
-    </div>
-    <button @click="completeSurvey()" class="submit-btn">
-      Пройти еще раз
-    </button>
-  </div>
 </template>
 
 <script setup>

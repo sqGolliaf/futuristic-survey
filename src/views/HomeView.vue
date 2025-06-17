@@ -10,8 +10,7 @@
     </div>
 
     <div class="question-container glass-panel">
-      <h2>Выберите:</h2>
-
+      <h2 class="form-title">Выберите:</h2>
       <div v-for="question in questions" :key="question.id" class="question">
         <button
           @click="selectOption(currentQuestionIndex, question)"

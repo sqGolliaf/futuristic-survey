@@ -7,7 +7,7 @@
   border-radius: 20px;
   border: 1px solid var(--glass-border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  padding: 40px;
+  padding: 120px 80px 80px 80px;
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
@@ -31,14 +31,14 @@
 }
 
 .user-data {
-  max-width: 600px;
+  max-width: 50%;
   margin: 0 auto;
-  padding: 40px;
+  padding: 120px;
   width: 100%;
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 50px;
 }
 
 .home {
@@ -49,7 +49,6 @@
 .survey-container {
   position: relative;
   z-index: 1;
-  /* остальные стили из вашего кода */
 }
 
 
@@ -161,6 +160,16 @@
   border-bottom: 1px dashed var(--glass-border);
 }
 
+.form-title {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: var(--primary);
+  z-index: 2;
+}
 
 @media (max-width: 768px) {
   .glass-panel {

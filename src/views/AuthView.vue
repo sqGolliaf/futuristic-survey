@@ -1,6 +1,6 @@
 <template>
   <div class="user-data glass-panel">
-    <h2>Введите ваши данные</h2>
+    <h2 class="form-title">Введите ваши данные</h2>
     <div class="form-group">
       <label>Логин:</label>
       <input v-model="userData.firstName" type="text" placeholder="Ваш логин">
